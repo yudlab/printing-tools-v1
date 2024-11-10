@@ -1,0 +1,25 @@
+.App {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: 0 auto;
+  .menu {
+    border: 1px solid #000;
+    padding: 1rem;
+    border-radius: .25rem;
+    margin: 1rem;
+  }
+  .printPreview {
+    border: 1px solid #000;
+    padding: 1rem;
+    border-radius: .25rem;
+    margin: 1rem;
+    .canvas-area {
+      display: flex;
+      justify-content: center;
+      align-items: column;
+    }
+  }
+}
+
