@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Stage, Layer, Image, Rect, Transformer, Line, Group } from "react-konva";
+import { Stage, Layer, Image, Rect, Transformer, Line, Group, Text } from "react-konva";
 
 const PAGE_SIZES = {
   A4: { width: 210, height: 297 },
@@ -8,7 +8,9 @@ const PAGE_SIZES = {
 
 function PrintCanvas({ pageSize, orientation }) {
   const [images, setImages] = useState([]);
+  const [texts, setTexts] = useState([]); // Track text elements
   const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedText, setSelectedText] = useState(null);
   const [printMode, setPrintMode] = useState("Scaled Print");
   const [gridSize, setGridSize] = useState({ rows: 3, cols: 4 });
   const [contextMenu, setContextMenu] = useState(null);
@@ -53,12 +55,26 @@ function PrintCanvas({ pageSize, orientation }) {
     reader.readAsDataURL(file);
   };
 
-  const handleSelect = (id) => setSelectedImage(id);
+  const handleSelectImage = (id) => {
+    setSelectedImage(id);
+    setSelectedText(null); // Deselect text when selecting an image
+  };
+
+  const handleSelectText = (id) => {
+    setSelectedText(id);
+    setSelectedImage(null); // Deselect image when selecting text
+  };
 
   const deleteSelectedImage = () => {
     setImages(images.filter((img) => img.id !== selectedImage));
     setSelectedImage(null);
     setContextMenu(null); // Close the context menu after deleting
+  };
+
+  const deleteSelectedText = () => {
+    setTexts(texts.filter((txt) => txt.id !== selectedText));
+    setSelectedText(null);
+    setContextMenu(null); // Close the context menu after deleting text
   };
 
   const zoomInImage = () => {
@@ -81,9 +97,40 @@ function PrintCanvas({ pageSize, orientation }) {
     setContextMenu(null); // Close the context menu after zooming out
   };
 
-  const handleContextMenu = (e, id) => {
-    e.evt.preventDefault(); // Prevent default context menu
-    setSelectedImage(id);
+  const addText = () => {
+    if (selectedImage != null) {
+      const image = images.find((img) => img.id === selectedImage);
+      const newText = {
+        id: texts.length,
+        x: image.x + 10, // Position near the selected image
+        y: image.y + 10,
+        text: "Sample Text",
+        width: 100,
+        rotation: 0,
+      };
+      setTexts((prevTexts) => [...prevTexts, newText]);
+    }
+    setContextMenu(null); // Close the context menu after adding text
+  };
+
+  const handleTextChange = (id, newAttrs) => {
+    const updatedTexts = texts.map((txt) => (txt.id === id ? { ...txt, ...newAttrs } : txt));
+    setTexts(updatedTexts);
+  };
+
+  const handleTextEdit = (id, newText) => {
+    setTexts(texts.map((txt) => (txt.id === id ? { ...txt, text: newText } : txt)));
+  };
+
+  const handleContextMenu = (e, id, type) => {
+    e.evt.preventDefault();
+    if (type === "image") {
+      setSelectedImage(id);
+      setSelectedText(null);
+    } else if (type === "text") {
+      setSelectedText(id);
+      setSelectedImage(null);
+    }
     setContextMenu({
       x: e.evt.clientX,
       y: e.evt.clientY,
@@ -93,12 +140,14 @@ function PrintCanvas({ pageSize, orientation }) {
   const handleStageClick = (e) => {
     if (e.target === e.target.getStage()) {
       setSelectedImage(null);
-      setContextMenu(null); // Close context menu when clicking outside
+      setSelectedText(null);
+      setContextMenu(null);
     }
   };
 
   const handlePrint = () => {
     setSelectedImage(null);
+    setSelectedText(null);
     setTimeout(() => {
       const dataURL = stageRef.current.toDataURL({ pixelRatio: 3 });
       const printWindow = window.open("", "_blank");
@@ -111,6 +160,7 @@ function PrintCanvas({ pageSize, orientation }) {
   const handlePrintModeChange = (e) => {
     setPrintMode(e.target.value);
     setImages([]);
+    setTexts([]);
   };
 
   const drawGrid = () => {
@@ -175,17 +225,58 @@ function PrintCanvas({ pageSize, orientation }) {
               key={img.id}
               image={img}
               isSelected={img.id === selectedImage}
-              onSelect={() => handleSelect(img.id)}
+              onSelect={() => handleSelectImage(img.id)}
               onChange={(newAttrs) => {
-                const newImages = images.slice();
-                newImages[index] = newAttrs;
-                setImages(newImages);
+                const updatedImages = images.slice();
+                updatedImages[index] = { ...updatedImages[index], ...newAttrs };
+                setImages(updatedImages);
               }}
-              cellWidth={printMode === "PECS" ? cellWidth : canvasDimensions.width}
-              cellHeight={printMode === "PECS" ? cellHeight : canvasDimensions.height}
-              clipToCell={printMode === "PECS"} // Conditionally clip image in PECS mode only
-              onContextMenu={(e) => handleContextMenu(e, img.id)} // Attach the context menu event handler
+              cellWidth={cellWidth}
+              cellHeight={cellHeight}
+              clipToCell={printMode === "PECS"}
+              onContextMenu={(e) => handleContextMenu(e, img.id, "image")}
             />
+          ))}
+          {texts.map((txt, index) => (
+            <Group
+              key={txt.id}
+              onClick={() => handleSelectText(txt.id)}
+              onContextMenu={(e) => handleContextMenu(e, txt.id, "text")}
+            >
+              <Rect
+                x={txt.x}
+                y={txt.y}
+                width={txt.width}
+                height={20}
+                fill="white"
+              />
+              <Text
+                text={txt.text}
+                x={txt.x}
+                y={txt.y}
+                width={txt.width}
+                fontSize={14}
+                draggable
+                fill="black"
+                background="white"
+                onClick={() => setSelectedText(txt.id)}
+                onDblClick={(e) => {
+                  const input = prompt("Edit Text:", txt.text);
+                  if (input !== null) handleTextEdit(txt.id, input);
+                }}
+                onDragEnd={(e) => handleTextChange(txt.id, { x: e.target.x(), y: e.target.y() })}
+                onTransformEnd={(e) => {
+                  const node = e.target;
+                  handleTextChange(txt.id, { x: node.x(), y: node.y(), rotation: node.rotation(), width: node.width() });
+                }}
+              />
+              {selectedText === txt.id && (
+                <Transformer
+                  anchorSize={5}
+                  boundBoxFunc={(oldBox, newBox) => newBox}
+                />
+              )}
+            </Group>
           ))}
         </Layer>
       </Stage>
@@ -206,6 +297,8 @@ function PrintCanvas({ pageSize, orientation }) {
             <li onClick={deleteSelectedImage}>Delete</li>
             <li onClick={zoomInImage}>Zoom In (+)</li>
             <li onClick={zoomOutImage}>Zoom Out (-)</li>
+            <li onClick={addText}>Add Text</li>
+            <li onClick={deleteSelectedText}>Delete Text</li>
           </ul>
         </div>
       )}
